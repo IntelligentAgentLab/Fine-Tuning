@@ -13,25 +13,34 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Build and send digest
+      - name: Send one digest message per author
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          COMMITS=$(git log origin/main --since="24 hours ago" --pretty=format:'- `%h` %s — %an')
-          if [ -z "$COMMITS" ]; then
+          git log origin/main --since="24 hours ago" --pretty=format:'%an%x09%h%x09%s' > commits.tsv
+
+          if [ ! -s commits.tsv ]; then
             echo "No commits in the last 24h, skipping notification."
             exit 0
           fi
-          PAYLOAD=$(jq -n \
-            --arg repo "${{ github.repository }}" \
-            --arg commits "$COMMITS" \
-            --arg url "https://github.com/${{ github.repository }}/commits/main" \
-            '{
-              embeds: [{
-                title: ($repo + " — 지난 24시간 main 변경사항"),
-                description: $commits,
-                url: $url,
-                color: 3066993
-              }]
-            }')
-          curl -sf -H "Content-Type: application/json" -d "$PAYLOAD" "$DISCORD_WEBHOOK_URL"
+
+          REPO_URL="https://github.com/${{ github.repository }}/commits/main"
+
+          cut -f1 commits.tsv | sort -u | while IFS= read -r author; do
+            COMMITS=$(awk -F'\t' -v a="$author" '$1==a {print "- `" $2 "` " $3}' commits.tsv)
+            PAYLOAD=$(jq -n \
+              --arg repo "${{ github.repository }}" \
+              --arg author "$author" \
+              --arg commits "$COMMITS" \
+              --arg url "$REPO_URL" \
+              '{
+                embeds: [{
+                  title: ($repo + " — " + $author + "님의 지난 24시간 작업"),
+                  description: $commits,
+                  url: $url,
+                  color: 3066993
+                }]
+              }')
+            curl -sf -H "Content-Type: application/json" -d "$PAYLOAD" "$DISCORD_WEBHOOK_URL"
+            sleep 1
+          done
