@@ -17,17 +17,19 @@ jobs:
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          git log origin/main --since="24 hours ago" --pretty=format:'%an%x09%h%x09%s' > commits.tsv
+          git log origin/main --since="24 hours ago" --pretty=format:'%an%x09%h%x09%H%x09%s' > commits.tsv
 
           if [ ! -s commits.tsv ]; then
             echo "No commits in the last 24h, skipping notification."
             exit 0
           fi
 
+          COMMIT_BASE_URL="https://github.com/${{ github.repository }}/commit"
           REPO_URL="https://github.com/${{ github.repository }}/commits/main"
 
           cut -f1 commits.tsv | sort -u | while IFS= read -r author; do
-            COMMITS=$(awk -F'\t' -v a="$author" '$1==a {print "- `" $2 "` " $3}' commits.tsv)
+            COMMITS=$(awk -F'\t' -v a="$author" -v base="$COMMIT_BASE_URL" \
+              '$1==a {print "- [`" $2 "`](" base "/" $3 ") " $4}' commits.tsv)
             PAYLOAD=$(jq -n \
               --arg repo "${{ github.repository }}" \
               --arg author "$author" \
