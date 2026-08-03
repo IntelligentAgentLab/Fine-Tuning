@@ -1,0 +1,32 @@
+name: Discord Push Notify
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send commit summary to Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          COMMITS=$(echo '${{ toJson(github.event.commits) }}' | jq -r '.[] | "- [`\(.id[0:7])`](\(.url)) \(.message | split("\n")[0]) — \(.author.name)"')
+          PAYLOAD=$(jq -n \
+            --arg repo "${{ github.repository }}" \
+            --arg branch "${{ github.ref_name }}" \
+            --arg pusher "${{ github.actor }}" \
+            --arg commits "$COMMITS" \
+            --arg url "https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.event.after }}" \
+            '{
+              embeds: [{
+                title: ($repo + " — " + $branch + " push"),
+                description: $commits,
+                url: $url,
+                color: 3066993,
+                footer: { text: $pusher }
+              }]
+            }')
+          curl -sf -H "Content-Type: application/json" -d "$PAYLOAD" "$DISCORD_WEBHOOK_URL"
