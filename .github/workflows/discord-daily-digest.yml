@@ -1,0 +1,37 @@
+name: Discord Daily Push Digest
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # 09:00 KST
+  workflow_dispatch:
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build and send digest
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          COMMITS=$(git log origin/main --since="24 hours ago" --pretty=format:'- `%h` %s — %an')
+          if [ -z "$COMMITS" ]; then
+            echo "No commits in the last 24h, skipping notification."
+            exit 0
+          fi
+          PAYLOAD=$(jq -n \
+            --arg repo "${{ github.repository }}" \
+            --arg commits "$COMMITS" \
+            --arg url "https://github.com/${{ github.repository }}/commits/main" \
+            '{
+              embeds: [{
+                title: ($repo + " — 지난 24시간 main 변경사항"),
+                description: $commits,
+                url: $url,
+                color: 3066993
+              }]
+            }')
+          curl -sf -H "Content-Type: application/json" -d "$PAYLOAD" "$DISCORD_WEBHOOK_URL"
